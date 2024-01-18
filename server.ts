@@ -427,7 +427,7 @@ app.post("/sign-verify", async (c) => {
     if (verification.verified) {
         await kv.delete(["challenges", clientData.challenge]);
         const signature = cred.response.signature;
-        return c.json({ success: true, signedData: challenge.value, signature });
+        return c.json({ success: true, signedData: challenge.value, signature, verification });
     } else {
         return c.text("Unauthorized", 401);
     }
