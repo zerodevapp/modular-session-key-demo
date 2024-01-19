@@ -14,9 +14,10 @@ import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { serveStatic } from "hono/bun";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
-import { parseMakeCredAuthData, parseCreateResponse, parseSignResponse, derKeytoContractFriendlyKey, parseAndNormalizeSig } from "./utils";
+import { parseMakeCredAuthData, parseCreateResponse, parseSignResponse, derKeytoContractFriendlyKey, parseAndNormalizeSig, uint8ArrayToHexString, findQuoteIndices, convertBase64PublicKeyToXY, splitECDSASignature, b64ToBytes } from "./utils";
 import { AuthenticatorDevice } from '@simplewebauthn/typescript-types';
 import { base64URLStringToBuffer } from '@simplewebauthn/browser';
+import { encodeAbiParameters } from 'viem';
 
 
 // CONSTANTS
@@ -177,6 +178,26 @@ app.get("/index.js", serveStatic({ path: "./index.js" }));
 
 app.get("/", serveStatic({ path: "./index.html" }));
 
+app.get("/dummy-signature/:userId", async (c) => {
+    const userId = c.req.param("userId");
+
+    // Ensure the userId is provided
+    if (!userId) {
+        return c.text("User ID is required", 400);
+    }
+
+    // Retrieve the dummy signature from the KV store
+    const dummySignatureData = await kv.get<string>(["dummySignature", userId]);
+
+    // Check if the dummy signature exists
+    if (!dummySignatureData.value) {
+        return c.text("Dummy signature not found", 404);
+    }
+
+    // Return the dummy signature to the client
+    return c.json({ dummySignature: dummySignatureData.value });
+});
+
 // Add new endpoint to process and display data
 app.post("/process-authentication", async (c) => {
     const { cred } = await c.req.json();
@@ -319,7 +340,12 @@ app.post("/login/verify", async (c) => {
     console.log({ cred });
 
     const clientData = JSON.parse(atob(cred.response.clientDataJSON));
+
+    const clientDataJSON = atob(cred.response.clientDataJSON);
     console.log({ clientData });
+    if (typeof clientDataJSON !== 'string') {
+        throw new Error('clientDataJSON must be a string');
+    }
 
     const userId = cred.response.userHandle;
     console.log({ userId });
@@ -371,6 +397,34 @@ app.post("/login/verify", async (c) => {
             path: "/",
             maxAge: 600_000,
         });
+
+        const existingDummySignature = await kv.get<string>(["dummySignature", userId]);
+        if (existingDummySignature.value) {
+            console.log("Dummy signature already exists for userId:", userId);
+            return c.json(verification);
+        }
+        const signature = cred.response.signature;
+        const authenticatorData = cred.response.authenticatorData;
+
+        const authenticatorDataHex = uint8ArrayToHexString(b64ToBytes(authenticatorData));
+        const signatureHex = uint8ArrayToHexString(b64ToBytes(signature));
+        const { r, s } = splitECDSASignature(signatureHex);
+        const { beforeT, beforeChallenge } = findQuoteIndices(clientDataJSON);
+
+
+        const dummySignature = encodeAbiParameters(
+            [{ name: 'authenticatorData', type: 'bytes' },
+            { name: 'clientDataJSON', type: 'string' },
+            { name: 'challengeLocation', type: 'uint256' },
+            { name: 'responseTypeLocation', type: 'uint256' },
+            { name: 'r', type: 'uint256' },
+            { name: 's', type: 'uint256' }],
+            [authenticatorDataHex, clientDataJSON, beforeChallenge as bigint, beforeT as bigint, BigInt(r), BigInt(s)])
+
+
+        console.log("dummySignature", dummySignature)
+        kv.set(["dummySignature", userId], dummySignature);
+
 
         return c.json(verification);
     }

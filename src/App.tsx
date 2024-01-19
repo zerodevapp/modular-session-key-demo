@@ -12,6 +12,12 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authenticatorData, setAuthenticatorData] = useState<string>('');
 
+  const fetchDummySignature = async (userId: string) => {
+    const response = await fetch(`http://localhost:8080/dummy-signature/${userId}`);
+    const result = await response.json();
+    return result.dummySignature;
+  }
+
   const handleRegister = async () => {
     const optionsResponse = await fetch('http://localhost:8080/register/options', {
       method: 'POST',
