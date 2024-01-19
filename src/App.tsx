@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { startAuthentication, startRegistration, browserSupportsWebAuthn, platformAuthenticatorIsAvailable, browserSupportsWebAuthnAutofill } from '@simplewebauthn/browser';
+import { b64ToBytes, uint8ArrayToHexString, verify, splitECDSASignature, convertBase64PublicKeyToXY, findQuoteIndices, parseAndNormalizeSig } from '../utils';
+import { toBytes } from 'viem';
 import './App.css';
 
 function App() {
   const [status, setStatus] = useState<string>('');
   const [name, setName] = useState<string>('');
   const [message, setMessage] = useState<string>('');
+  const [signature, setSignature] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authenticatorData, setAuthenticatorData] = useState<string>('');
 
@@ -73,6 +76,20 @@ function App() {
     const signInitiateResult = await signInitiateResponse.json();
     setStatus(`Data Signature: ${JSON.stringify(signInitiateResult)}`);
 
+    console.log("message", message);
+    console.log("signInitiateResult.challenge", signInitiateResult.challenge);
+    const challengeBase64 = signInitiateResult.challenge;
+    console.log("challengeBase64", challengeBase64);
+
+    const challengeArrayBuffer = b64ToBytes(challengeBase64);
+    console.log("challengeArrayBuffer", challengeArrayBuffer);
+    const challengeUint8Array = new Uint8Array(challengeArrayBuffer);
+    console.log("challengeUint8Array", challengeUint8Array);
+    
+    // Convert Uint8Array to hex string
+    const challengeHex = uint8ArrayToHexString(challengeUint8Array);
+    console.log("challengeHex", challengeHex);
+
     const assertionOptions = {
       challenge: signInitiateResult.challenge,
       allowCredentials: signInitiateResult.allowCredentials,
@@ -88,10 +105,36 @@ function App() {
     });
 
     const verifyResult = await verifyResponse.json();
-    setAuthenticatorData(JSON.stringify(verifyResult.verification.authenticationInfo, null, 2));
+    setAuthenticatorData(JSON.stringify(verifyResult.authenticationInfo, null, 2));
     if (verifyResult.success) {
       console.log('Signature verified successfully');
-      console.log('Signature:', verifyResult.signature); // Log the signature
+      const signature = verifyResult.signature;
+      const authenticatorData = verifyResult.authenticatorData;
+
+      const authenticatorDataHex = uint8ArrayToHexString(b64ToBytes(authenticatorData));
+      const signatureHex = uint8ArrayToHexString(b64ToBytes(signature));
+
+      const {r, s} = parseAndNormalizeSig(signatureHex);
+
+      const publicKeyBase64 = verifyResult.publicKeyBase64;
+
+
+
+
+      const { x, y } = convertBase64PublicKeyToXY(publicKeyBase64);
+
+      const clientDataJSON = atob(cred.response.clientDataJSON);
+
+
+      const { beforeT, beforeChallenge } = findQuoteIndices(clientDataJSON);
+
+
+
+      // const publicKeyHex = uint8ArrayToHexString(b64ToBytes(publicKey));
+
+      const verified = await verify(challengeHex, authenticatorDataHex, true, clientDataJSON, beforeChallenge, beforeT, BigInt(r), BigInt(s), BigInt(x), BigInt(y));
+
+      console.log("verified", verified);
     } else {
       console.log('Signature verification failed');
     }

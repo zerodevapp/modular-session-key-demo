@@ -16,6 +16,7 @@ import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { parseMakeCredAuthData, parseCreateResponse, parseSignResponse, derKeytoContractFriendlyKey, parseAndNormalizeSig } from "./utils";
 import { AuthenticatorDevice } from '@simplewebauthn/typescript-types';
+import { base64URLStringToBuffer } from '@simplewebauthn/browser';
 
 
 // CONSTANTS
@@ -427,7 +428,11 @@ app.post("/sign-verify", async (c) => {
     if (verification.verified) {
         await kv.delete(["challenges", clientData.challenge]);
         const signature = cred.response.signature;
-        return c.json({ success: true, signedData: challenge.value, signature, verification });
+        const publicKey = user.value.credentials[cred.id].credentialPublicKey;
+        const publicKeyBase64 = btoa(String.fromCharCode(...new Uint8Array(publicKey.buffer)));
+        console.log("publicKeyBase64", publicKeyBase64)
+        const authenticatorData = cred.response.authenticatorData;
+        return c.json({ success: true, signedData: challenge.value, signature, authenticatorData, publicKeyBase64 });
     } else {
         return c.text("Unauthorized", 401);
     }
