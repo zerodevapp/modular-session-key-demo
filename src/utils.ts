@@ -137,23 +137,22 @@ export const getEoaWalletClient = (): WalletClient => {
     })
 }
 
-export const getSignerToWebAuthnKernelAccount =
-    async (): Promise<SmartAccount> => {
-        const publicClient = await getPublicClient()
-        const webAuthnValidatorPlugin = await createPasskeyValidator(
-            publicClient,
-            {
-                entryPoint: getEntryPoint()
-            }
-        )
+export const getSignerToWebAuthnKernelAccount = async (
+    passkeyName: string
+): Promise<SmartAccount> => {
+    const publicClient = await getPublicClient()
+    const webAuthnValidatorPlugin = await createPasskeyValidator(publicClient, {
+        passkeyName,
+        entryPoint: getEntryPoint()
+    })
 
-        return createKernelAccount(publicClient, {
-            entryPoint: getEntryPoint(),
-            plugins: {
-                validator: webAuthnValidatorPlugin
-            }
-        })
-    }
+    return createKernelAccount(publicClient, {
+        entryPoint: getEntryPoint(),
+        plugins: {
+            validator: webAuthnValidatorPlugin
+        }
+    })
+}
 
 export const getEntryPoint = (): Address => {
     const entryPointAddress = import.meta.env.VITE_ENTRYPOINT_ADDRESS as Address
@@ -293,4 +292,10 @@ export const findUserOperationEvent = (logs: Log[]): boolean => {
             return false
         }
     })
+}
+
+export const uint8ArrayToHexString = (array: Uint8Array): `0x${string}` => {
+    return `0x${Array.from(array, (byte) =>
+        byte.toString(16).padStart(2, "0")
+    ).join("")}` as `0x${string}`
 }

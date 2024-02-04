@@ -18,6 +18,12 @@ import { toAccount } from "viem/accounts"
 import { signMessage, signTypedData } from "viem/actions"
 import { getChainId } from "viem/actions"
 import { WEBAUTHN_VALIDATOR_ADDRESS } from "./index.js"
+import { uint8ArrayToHexString } from "../utils.js"
+import {
+    b64ToBytes,
+    convertBase64PublicKeyToXY,
+    parseAndNormalizeSig
+} from "../../utils.js"
 
 export async function createPasskeyValidator<
     TTransport extends Transport = Transport,
@@ -41,23 +47,32 @@ export async function createPasskeyValidator<
     }
 ): Promise<KernelValidator<"WebAuthnValidator">> {
     //
-    const optionsResponse = await fetch(
-        "http://localhost:8080/register/options", // TODO: replace with actual url
+    const registerOptionsResponse = await fetch(
+        "http://localhost:8080/register/options",
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: "adnpark" }), // Replace with actual username input if needed,
+            body: JSON.stringify({ username: passkeyName }),
             credentials: "include"
         }
     )
-    const options = await optionsResponse.json()
+    const registerOptions = await registerOptionsResponse.json()
 
-    // const cred = await startRegistration(options)
-    const cred = await startRegistration(options)
+    const registerCred = await startRegistration(registerOptions)
 
-    console.log("cred: ", cred)
+    console.log("register cred: ", registerCred)
 
-    const pubKey = cred.response.publicKey
+    const registerVerifyResponse = await fetch(
+        "http://localhost:8080/register/verify",
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: passkeyName, cred: registerCred }),
+            credentials: "include"
+        }
+    )
+
+    const pubKey = registerCred.response.publicKey
     if (!pubKey) {
         throw new Error("No public key returned")
     }
@@ -83,128 +98,126 @@ export async function createPasskeyValidator<
     const rawKeyBuffer = Buffer.from(rawKey)
 
     // The first byte is 0x04 (uncompressed), followed by x and y coordinates (32 bytes each for P-256)
-    const x = rawKeyBuffer.subarray(1, 33).toString("hex")
-    const y = rawKeyBuffer.subarray(33).toString("hex")
+    const pubKeyX = rawKeyBuffer.subarray(1, 33).toString("hex")
+    const pubKeyY = rawKeyBuffer.subarray(33).toString("hex")
 
-    console.log("x: ", x)
-    console.log("y: ", y)
+    console.log("x: ", pubKeyX)
+    console.log("y: ", pubKeyY)
+
+    const loginOptionsResponse = await fetch(
+        "http://localhost:8080/login/options",
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: passkeyName }),
+            credentials: "include"
+        }
+    )
+    const loginOptions = await loginOptionsResponse.json()
+
+    const loginCred = await startAuthentication(loginOptions)
+
+    const LoginVerifyResponse = await fetch(
+        "http://localhost:8080/login/verify",
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cred: loginCred }),
+            credentials: "include"
+        }
+    )
 
     // build account with passkey
     const account = toAccount({
         address: "0x0000000000000000000000000000000000000000", // TODO: temp zero address
         // note that signMessage should be called in response to a user action
         async signMessage({ message }) {
-            const optionsResponse = await fetch(
-                "http://localhost:8080/login/options",
-                {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ username: name }),
-                    credentials: "include"
-                }
-            )
-            const options = await optionsResponse.json()
+            console.log("message: ", message)
 
-            console.log("options response", options)
-
-            const cred1 = await startAuthentication(options)
-
-            console.log("challenge: ", message)
-
-            let challengeString
-
-            // Check if message is a string
+            let messageContent
             if (typeof message === "string") {
-                challengeString = message
-            } else if (typeof message === "object" && message.raw) {
-                // Assuming message.raw can be a string or Uint8Array
-                if (typeof message.raw === "string") {
-                    challengeString = message.raw
-                } else if (message.raw instanceof Uint8Array) {
-                    // Convert Uint8Array to a hex string
-                    challengeString = `0x${Buffer.from(message.raw).toString(
-                        "hex"
-                    )}`
-                } else {
-                    throw new Error("Unsupported message.raw format")
-                }
+                // message is a string
+                messageContent = message
+            } else if ("raw" in message && typeof message.raw === "string") {
+                // message.raw is a Hex string
+                messageContent = message.raw
+            } else if ("raw" in message && message.raw instanceof Uint8Array) {
+                // message.raw is a ByteArray
+                messageContent = message.raw
             } else {
                 throw new Error("Unsupported message format")
             }
 
-            console.log("challengeString: ", challengeString)
+            console.log("messageContent: ", messageContent)
 
-            const hexString = challengeString.startsWith("0x")
-                ? challengeString.substring(2)
-                : challengeString
+            const converted = (messageContent as string).startsWith("0x")
+                ? messageContent.slice(2)
+                : messageContent
 
-            // convert hash to base64
-            const challengeStringBase64 = Buffer.from(
-                hexString,
-                "hex"
-            ).toString("base64")
-
-            console.log("challengeStringBase64: ", challengeStringBase64)
-
-            const cred = await startAuthentication({
-                challenge: challengeStringBase64,
-                userVerification: "required"
-            })
-
-            // get authenticatorData and clientDataJSON
-            const authenticatorData = Buffer.from(
-                cred.response.authenticatorData,
-                "base64"
-            ).toString("hex")
-
-            // Assuming cred.response.clientDataJSON is your base64 URL-encoded string
-            const clientDataJSONBase64 = cred.response.clientDataJSON
-
-            // Convert base64 URL-encoded string to a standard base64 string
-            const base64 = clientDataJSONBase64
-                .replace(/-/g, "+")
-                .replace(/_/g, "/")
-
-            // Decode from base64 to get the JSON string
-            const clientDataJsonString = Buffer.from(base64, "base64").toString(
-                "utf-8"
+            const signInitiateResponse = await fetch(
+                "http://localhost:8080/sign-initiate",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ data: converted }),
+                    credentials: "include"
+                }
             )
 
-            // Find the locations of the challenge and response type in the clientDataJSON string
-            const challengeLocation =
-                clientDataJsonString.indexOf('"challenge"')
-            const responseTypeLocation = clientDataJsonString.indexOf(
-                '"type":"webauthn.get"'
+            const signInitiateResult = await signInitiateResponse.json()
+
+            const challengeBase64 = signInitiateResult.challenge
+            const challengeArrayBuffer = b64ToBytes(challengeBase64)
+            const challengeUint8Array = new Uint8Array(challengeArrayBuffer)
+            const challengeHex = uint8ArrayToHexString(challengeUint8Array)
+
+            console.log(
+                "signInitiateResult.challenge: ",
+                signInitiateResult.challenge
             )
 
-            // get signature r,s
-            const signatureBuffer = Buffer.from(
-                cred.response.signature,
-                "base64"
+            const assertionOptions = {
+                challenge: signInitiateResult.challenge,
+                allowCredentials: signInitiateResult.allowCredentials
+            }
+
+            const cred = await startAuthentication(assertionOptions)
+
+            const verifyResponse = await fetch(
+                "http://localhost:8080/sign-verify",
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ cred }),
+                    credentials: "include"
+                }
             )
 
-            // Assuming the signature is in DER format, and using a simple parser
-            let offset = 2 // Skip 0x30 (sequence) and the sequence length
+            const verifyResult = await verifyResponse.json()
+            console.log("verifyResult: ", verifyResult)
 
-            // Parse r
-            const rLength = signatureBuffer[offset + 1]
-            const r = signatureBuffer
-                .subarray(offset + 2, offset + 2 + rLength)
-                .toString("hex")
-            offset += 2 + rLength
+            const signature = verifyResult.signature
+            const authenticatorData = verifyResult.authenticatorData
 
-            // Parse s
-            const sLength = signatureBuffer[offset + 1]
-            const s = signatureBuffer
-                .subarray(offset + 2, offset + 2 + sLength)
-                .toString("hex")
+            const authenticatorDataHex = uint8ArrayToHexString(
+                b64ToBytes(authenticatorData)
+            )
+            const signatureHex = uint8ArrayToHexString(b64ToBytes(signature))
 
-            console.log("authenticatorData: ", authenticatorData)
-            console.log("clientDataJSON: ", clientDataJsonString)
-            console.log("challengeLocation: ", challengeLocation)
-            console.log("responseTypeLocation: ", responseTypeLocation)
+            const { r, s } = parseAndNormalizeSig(signatureHex)
+
+            const clientDataJSON = atob(cred.response.clientDataJSON)
+
+            const publicKeyBase64 = verifyResult.publicKeyBase64
+            const { x, y } = convertBase64PublicKeyToXY(publicKeyBase64)
+
+            console.log("challenge: ", challengeHex)
+            console.log("authenticatorDataHex: ", authenticatorDataHex)
+            console.log("clientDataJSON: ", clientDataJSON)
             console.log("r: ", r)
             console.log("s: ", s)
+            console.log("x: ", x)
+            console.log("y: ", y)
 
             // encode signature
             const encodedSignature = encodeAbiParameters(
@@ -217,13 +230,12 @@ export async function createPasskeyValidator<
                     { name: "s", type: "uint256" }
                 ],
                 [
-                    // `0x${authenticatorData}`,
-                    "0x02438d3405cadd648e08dbff51bdbeb415913e642189100dc4a012064c870883050002343c",
-                    clientDataJsonString,
-                    BigInt(challengeLocation),
-                    BigInt(responseTypeLocation),
-                    BigInt(`0x${r}`),
-                    BigInt(`0x${s}`)
+                    authenticatorDataHex,
+                    clientDataJSON,
+                    BigInt(23),
+                    BigInt(1),
+                    r,
+                    s
                 ]
             )
             return encodedSignature
@@ -273,7 +285,7 @@ export async function createPasskeyValidator<
                         type: "tuple"
                     }
                 ],
-                [{ x: BigInt(`0x${x}`), y: BigInt(`0x${y}`) }]
+                [{ x: BigInt(`0x${pubKeyX}`), y: BigInt(`0x${pubKeyY}`) }]
             )
         },
         async getNonceKey() {
@@ -304,7 +316,7 @@ export async function createPasskeyValidator<
             const clientDataJSON =
                 '{"type":"webauthn.get","challenge":"-q0bkO7eXzE152_SkeSPVLhrYw6PDEtahd5mTKnsnnc","origin":"https://funny-froyo-3f9b75.netlify.app"}'
             const challengeLocation = 1
-            const responseTypeLocation = 27
+            const responseTypeLocation = 23
             const r = "0x" + "a".repeat(64)
             const s = "0x" + "a".repeat(64)
 

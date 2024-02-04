@@ -59,7 +59,7 @@ function App() {
         const options = await optionsResponse.json()
         setStatus(`Registration Options: ${JSON.stringify(options)}`)
 
-        account = await getSignerToWebAuthnKernelAccount()
+        account = await getSignerToWebAuthnKernelAccount(name)
         kernelClient = await getKernelAccountClient({
             account,
             sponsorUserOperation: async ({ userOperation }) => {
