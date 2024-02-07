@@ -594,6 +594,9 @@ app.get("/private", async (c) => {
     })
 })
 
+// health check
+app.get("/health", (c) => c.json({ status: "ok" }))
+
 Bun.serve({
     port: 8080, // defaults to $BUN_PORT, $PORT, $NODE_PORT otherwise 3000
     fetch: app.fetch
