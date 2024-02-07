@@ -32,10 +32,10 @@ function App() {
     const handleRegister = async () => {
         account = await registerWebAuthnKernelAccount(
             name,
-            "https://webauthn-demo-server.onrender.com//register/options",
-            "https://webauthn-demo-server.onrender.com//register/verify",
-            "https://webauthn-demo-server.onrender.com//sign-initiate",
-            "https://webauthn-demo-server.onrender.com//sign-verify"
+            "https://webauthn-demo-server.onrender.com/register/options",
+            "https://webauthn-demo-server.onrender.com/register/verify",
+            "https://webauthn-demo-server.onrender.com/sign-initiate",
+            "https://webauthn-demo-server.onrender.com/sign-verify"
         )
         kernelClient = await getKernelAccountClient({
             account,
@@ -58,7 +58,7 @@ function App() {
             "https://webauthn-demo-server.onrender.com/login/options",
             "https://webauthn-demo-server.onrender.com/login/verify",
             "https://webauthn-demo-server.onrender.com/sign-initiate",
-            "https://webauthn-demo-server.onrender.com//sign-verify"
+            "https://webauthn-demo-server.onrender.com/sign-verify"
         )
 
         kernelClient = await getKernelAccountClient({
