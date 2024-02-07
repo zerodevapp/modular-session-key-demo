@@ -53,7 +53,9 @@ export async function createPasskeyValidator<
     // Get registration options
     const registerOptionsResponse = await fetch(registerOptionUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json"
+        },
         body: JSON.stringify({ username: passkeyName }),
         credentials: "include"
     })
@@ -63,7 +65,9 @@ export async function createPasskeyValidator<
     // Verify registration
     const registerVerifyResponse = await fetch(registerVerifyUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+            "Content-Type": "application/json"
+        },
         body: JSON.stringify({ username: passkeyName, cred: registerCred }),
         credentials: "include"
     })

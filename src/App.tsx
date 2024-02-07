@@ -10,6 +10,8 @@ import {
 } from "./utils"
 import { KernelAccountClient, KernelSmartAccount } from "@zerodev/sdk"
 
+const URL = "https://webauthn-demo-server.onrender.com"
+
 let account
 let kernelClient: KernelAccountClient<Transport, Chain, KernelSmartAccount>
 
@@ -32,10 +34,10 @@ function App() {
     const handleRegister = async () => {
         account = await registerWebAuthnKernelAccount(
             name,
-            "https://webauthn-demo-server.onrender.com/register/options",
-            "https://webauthn-demo-server.onrender.com/register/verify",
-            "https://webauthn-demo-server.onrender.com/sign-initiate",
-            "https://webauthn-demo-server.onrender.com/sign-verify"
+            `${URL}/register/options`,
+            `${URL}/register/verify`,
+            `${URL}/sign-initiate`,
+            `${URL}/sign-verify`
         )
         kernelClient = await getKernelAccountClient({
             account,
@@ -55,10 +57,10 @@ function App() {
 
     const handleLogin = async () => {
         account = await loginToWebAuthnKernelAccount(
-            "https://webauthn-demo-server.onrender.com/login/options",
-            "https://webauthn-demo-server.onrender.com/login/verify",
-            "https://webauthn-demo-server.onrender.com/sign-initiate",
-            "https://webauthn-demo-server.onrender.com/sign-verify"
+            `${URL}/login/options`,
+            `${URL}/login/verify`,
+            `${URL}/sign-initiate`,
+            `${URL}/sign-verify`
         )
 
         kernelClient = await getKernelAccountClient({

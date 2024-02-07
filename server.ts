@@ -260,7 +260,7 @@ app.post("/register/options", async (c) => {
     await setSignedCookie(c, "userId", userID, SECRET, {
         httpOnly: true,
         secure: true,
-        sameSite: "Strict",
+        sameSite: "None",
         path: "/",
         maxAge: CHALLENGE_TTL
     })
@@ -343,7 +343,7 @@ app.post("/register/verify", async (c) => {
         await setSignedCookie(c, "token", await generateJWT(userId), SECRET, {
             httpOnly: true,
             secure: true,
-            sameSite: "Strict",
+            sameSite: "None",
             path: "/",
             maxAge: 600_000
         })
@@ -432,7 +432,7 @@ app.post("/login/verify", async (c) => {
         await setSignedCookie(c, "token", await generateJWT(userId), SECRET, {
             httpOnly: true,
             secure: true,
-            sameSite: "Strict",
+            sameSite: "None",
             path: "/",
             maxAge: 600_000
         })
