@@ -25,15 +25,10 @@ import {
     decodeEventLog,
     encodeFunctionData
 } from "viem"
-import {
-    type Account,
-    generatePrivateKey,
-    privateKeyToAccount
-} from "viem/accounts"
+import { type Account, privateKeyToAccount } from "viem/accounts"
 import { type Chain, goerli } from "viem/chains"
 import * as allChains from "viem/chains"
 import { EntryPointAbi } from "./abis/EntryPoint.js"
-import { TEST_ERC20Abi } from "./abis/Test_ERC20Abi.js"
 import { createPasskeyValidator } from "./plugin/index.js"
 import { getPasskeyValidator } from "./plugin/toWebAuthnValidator.js"
 

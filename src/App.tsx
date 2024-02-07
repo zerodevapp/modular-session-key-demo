@@ -16,18 +16,18 @@ let kernelClient: KernelAccountClient<Transport, Chain, KernelSmartAccount>
 function App() {
     const [status, setStatus] = useState<string>("")
     const [name, setName] = useState<string>("")
-    const [message, setMessage] = useState<string>("")
-    const [signature, setSignature] = useState<string>("")
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
-    const [authenticatorData, setAuthenticatorData] = useState<string>("")
+    // const [message, setMessage] = useState<string>("")
+    // const [signature, setSignature] = useState<string>("")
+    // const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
+    // const [authenticatorData, setAuthenticatorData] = useState<string>("")
 
-    const fetchDummySignature = async (userId: string) => {
-        const response = await fetch(
-            `http://localhost:8080/dummy-signature/${userId}`
-        )
-        const result = await response.json()
-        return result.dummySignature
-    }
+    // const fetchDummySignature = async (userId: string) => {
+    //     const response = await fetch(
+    //         `http://localhost:8080/dummy-signature/${userId}`
+    //     )
+    //     const result = await response.json()
+    //     return result.dummySignature
+    // }
 
     const handleRegister = async () => {
         account = await registerWebAuthnKernelAccount(
@@ -109,13 +109,13 @@ function App() {
                     <button onClick={handleSendUserOp}>Send UserOp</button>
                 </div>
                 <p>Status: {status}</p>
-                {authenticatorData && (
+                {/* {authenticatorData && (
                     <div className="card">
                         <h2>Authenticator Data</h2>
                         <pre>{authenticatorData}</pre>
                     </div>
-                )}
-
+                )} */}
+                {/* 
                 {isAuthenticated && (
                     <div className="card">
                         <p>Authenticated!</p>
@@ -138,7 +138,7 @@ function App() {
                             </div>
                         </div>
                     </div>
-                )}
+                )} */}
             </div>
         </>
     )
