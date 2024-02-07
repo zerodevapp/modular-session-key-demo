@@ -35,6 +35,7 @@ import * as allChains from "viem/chains"
 import { EntryPointAbi } from "./abis/EntryPoint.js"
 import { TEST_ERC20Abi } from "./abis/Test_ERC20Abi.js"
 import { createPasskeyValidator } from "./plugin/index.js"
+import { getPasskeyValidator } from "./plugin/toWebAuthnValidator.js"
 
 export const Test_ERC20Address = "0x3870419Ba2BBf0127060bCB37f69A1b1C090992B"
 export const getFactoryAddress = (): Address => {
@@ -80,7 +81,7 @@ export const getSignerToSimpleSmartAccount =
         })
     }
 
-const DEFAULT_PROVIDER = "PIMLICO"
+const DEFAULT_PROVIDER = "ALCHEMY"
 
 const getBundlerRpc = (): string => {
     const zeroDevProjectId = import.meta.env.VITE_ZERODEV_PROJECT_ID
@@ -137,12 +138,43 @@ export const getEoaWalletClient = (): WalletClient => {
     })
 }
 
-export const getSignerToWebAuthnKernelAccount = async (
-    passkeyName: string
+export const registerWebAuthnKernelAccount = async (
+    passkeyName: string,
+    registerOptionUrl: string,
+    registerVerifyUrl: string,
+    signInitiateUrl: string,
+    signVerifyUrl: string
 ): Promise<SmartAccount> => {
     const publicClient = await getPublicClient()
     const webAuthnValidatorPlugin = await createPasskeyValidator(publicClient, {
         passkeyName,
+        registerOptionUrl,
+        registerVerifyUrl,
+        signInitiateUrl,
+        signVerifyUrl,
+        entryPoint: getEntryPoint()
+    })
+
+    return createKernelAccount(publicClient, {
+        entryPoint: getEntryPoint(),
+        plugins: {
+            validator: webAuthnValidatorPlugin
+        }
+    })
+}
+
+export const loginToWebAuthnKernelAccount = async (
+    loginOptionUrl: string,
+    loginVerifyUrl: string,
+    signInitiateUrl: string,
+    signVerifyUrl: string
+): Promise<SmartAccount> => {
+    const publicClient = await getPublicClient()
+    const webAuthnValidatorPlugin = await getPasskeyValidator(publicClient, {
+        loginOptionUrl,
+        loginVerifyUrl,
+        signInitiateUrl,
+        signVerifyUrl,
         entryPoint: getEntryPoint()
     })
 

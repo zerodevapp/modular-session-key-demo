@@ -182,6 +182,7 @@ type User = {
 }
 
 type Credential = {
+    pubKey?: string
     credentialID: Uint8Array
     credentialPublicKey: Uint8Array
     counter: number
@@ -288,15 +289,18 @@ app.post("/register/verify", async (c) => {
         username: string
         cred: RegistrationResponseJSON
     }>()
-    console.log({ username, cred })
+    console.log("register username and cred", { username, cred })
+
+    // base64url to Uint8Array
+    const pubKey = cred.response.publicKey!
+    console.log("register public key", { pubKey })
 
     const userId = await getSignedCookie(c, SECRET, "userId")
-    console.log({ userId })
     if (!userId) return new Response("Unauthorized", { status: 401 })
-    console.log({ userId })
+    console.log("register user Id", { userId })
 
     const clientData = JSON.parse(atob(cred.response.clientDataJSON))
-    console.log({ clientData })
+    console.log("register client data", { clientData })
 
     const challenge = await kv.get<Challenge>([
         "challenges",
@@ -315,7 +319,7 @@ app.post("/register/verify", async (c) => {
         expectedOrigin: c.req.header("origin")!, //! Allow from any origin
         requireUserVerification: true
     })
-    console.log({ verification })
+    console.log("Register Verification", { verification })
 
     if (verification.verified) {
         const { credentialID, credentialPublicKey, counter } =
@@ -328,6 +332,7 @@ app.post("/register/verify", async (c) => {
             data: "Private user data for " + (username || "Anon"),
             credentials: {
                 [cred.id]: {
+                    pubKey,
                     credentialID,
                     credentialPublicKey,
                     counter
@@ -438,7 +443,10 @@ app.post("/login/verify", async (c) => {
         ])
         if (existingDummySignature.value) {
             console.log("Dummy signature already exists for userId:", userId)
-            return c.json(verification)
+            return c.json({
+                verification,
+                pubkey: user.value.credentials[cred.id].pubKey
+            })
         }
         const signature = cred.response.signature
         const authenticatorData = cred.response.authenticatorData
@@ -448,7 +456,7 @@ app.post("/login/verify", async (c) => {
         )
         const signatureHex = uint8ArrayToHexString(b64ToBytes(signature))
         const { r, s } = splitECDSASignature(signatureHex)
-        const { beforeT, beforeChallenge } = findQuoteIndices(clientDataJSON)
+        const { beforeType, beforeChallenge } = findQuoteIndices(clientDataJSON)
 
         const dummySignature = encodeAbiParameters(
             [
@@ -463,7 +471,7 @@ app.post("/login/verify", async (c) => {
                 authenticatorDataHex,
                 clientDataJSON,
                 beforeChallenge as bigint,
-                beforeT as bigint,
+                beforeType as bigint,
                 BigInt(r),
                 BigInt(s)
             ]
@@ -472,7 +480,10 @@ app.post("/login/verify", async (c) => {
         console.log("dummySignature", dummySignature)
         kv.set(["dummySignature", userId], dummySignature)
 
-        return c.json(verification)
+        return c.json({
+            verification,
+            pubkey: user.value.credentials[cred.id].pubKey
+        })
     }
     console.log("Verification failed for user:", userId)
 
