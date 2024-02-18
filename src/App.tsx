@@ -10,7 +10,10 @@ import {
 } from "./utils"
 import { KernelAccountClient, KernelSmartAccount } from "@zerodev/sdk"
 
-const URL = "https://webauthn-demo-server.onrender.com"
+const projectId = "003c65f3-1e17-42fc-a130-774524a70e30"
+// const URL = `http://localhost:4003/projects/${projectId}/passkey`
+// const URL = 'http://localhost:8080'
+const url = `https://webauthn-demo-server.onrender.com/projects/${projectId}/passkey`
 
 let account
 let kernelClient: KernelAccountClient<Transport, Chain, KernelSmartAccount>
@@ -18,26 +21,14 @@ let kernelClient: KernelAccountClient<Transport, Chain, KernelSmartAccount>
 function App() {
     const [status, setStatus] = useState<string>("")
     const [name, setName] = useState<string>("")
-    // const [message, setMessage] = useState<string>("")
-    // const [signature, setSignature] = useState<string>("")
-    // const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false)
-    // const [authenticatorData, setAuthenticatorData] = useState<string>("")
-
-    // const fetchDummySignature = async (userId: string) => {
-    //     const response = await fetch(
-    //         `http://localhost:8080/dummy-signature/${userId}`
-    //     )
-    //     const result = await response.json()
-    //     return result.dummySignature
-    // }
 
     const handleRegister = async () => {
         account = await registerWebAuthnKernelAccount(
             name,
-            `${URL}/register/options`,
-            `${URL}/register/verify`,
-            `${URL}/sign-initiate`,
-            `${URL}/sign-verify`
+            `${url}/register/options`,
+            `${url}/register/verify`,
+            `${url}/sign-initiate`,
+            `${url}/sign-verify`
         )
         kernelClient = await getKernelAccountClient({
             account,
@@ -57,10 +48,10 @@ function App() {
 
     const handleLogin = async () => {
         account = await loginToWebAuthnKernelAccount(
-            `${URL}/login/options`,
-            `${URL}/login/verify`,
-            `${URL}/sign-initiate`,
-            `${URL}/sign-verify`
+            `${url}/login/options`,
+            `${url}/login/verify`,
+            `${url}/sign-initiate`,
+            `${url}/sign-verify`
         )
 
         kernelClient = await getKernelAccountClient({
@@ -111,36 +102,6 @@ function App() {
                     <button onClick={handleSendUserOp}>Send UserOp</button>
                 </div>
                 <p>Status: {status}</p>
-                {/* {authenticatorData && (
-                    <div className="card">
-                        <h2>Authenticator Data</h2>
-                        <pre>{authenticatorData}</pre>
-                    </div>
-                )} */}
-                {/* 
-                {isAuthenticated && (
-                    <div className="card">
-                        <p>Authenticated!</p>
-                        <div className="input-group">
-                            <input
-                                key="message-input"
-                                type="text"
-                                value={message}
-                                onChange={(e) => setMessage(e.target.value)}
-                                placeholder="Enter your message"
-                                className="input"
-                            />
-                            <div>
-                                <button
-                                    onClick={handleSignData}
-                                    className="button"
-                                >
-                                    Sign Data
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )} */}
             </div>
         </>
     )

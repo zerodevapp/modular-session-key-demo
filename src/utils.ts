@@ -153,7 +153,7 @@ export const registerWebAuthnKernelAccount = async (
     return createKernelAccount(publicClient, {
         entryPoint: getEntryPoint(),
         plugins: {
-            validator: webAuthnValidatorPlugin
+            sudo: webAuthnValidatorPlugin
         }
     })
 }
@@ -176,7 +176,7 @@ export const loginToWebAuthnKernelAccount = async (
     return createKernelAccount(publicClient, {
         entryPoint: getEntryPoint(),
         plugins: {
-            validator: webAuthnValidatorPlugin
+            sudo: webAuthnValidatorPlugin
         }
     })
 }
