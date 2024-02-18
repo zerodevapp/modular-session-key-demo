@@ -12,16 +12,21 @@ class PasskeyRepository {
         PasskeyRepository.passkeyRepository = this
     }
 
-    async set(key: (string | number)[], value: any, expireIn?: number) {
+    async set(
+        key: (string | number)[],
+        value: any,
+        options?: { expireIn?: number; overwrite?: boolean }
+    ) {
         const serializedKey = JSON.stringify(key)
         const valueToStore = JSON.stringify(value)
+        const { expireIn, overwrite } = options || {}
 
         const exists = await redisClient.exists(serializedKey)
-        if (exists) {
+        if (exists && !overwrite) {
             throw new Error("Key already exists")
         }
 
-        if (expireIn) {
+        if (expireIn !== undefined) {
             await redisClient.setex(serializedKey, expireIn, valueToStore)
         } else {
             await redisClient.set(serializedKey, valueToStore)

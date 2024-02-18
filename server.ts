@@ -246,7 +246,9 @@ app.post("/projects/:projectId/passkey/register/options", async (c) => {
 
     console.log({ options })
 
-    passkeyRepo.set(["challenges", options.challenge], true, CHALLENGE_TTL)
+    passkeyRepo.set(["challenges", options.challenge], true, {
+        expireIn: CHALLENGE_TTL
+    })
 
     await setSignedCookie(c, "userId", userID, SECRET, {
         httpOnly: true,
@@ -368,11 +370,9 @@ app.post("/projects/:projectId/passkey/login/options", async (c) => {
         rpID: domainName
     })
 
-    await passkeyRepo.set(
-        ["challenges", options.challenge],
-        true,
-        CHALLENGE_TTL
-    )
+    await passkeyRepo.set(["challenges", options.challenge], true, {
+        expireIn: CHALLENGE_TTL
+    })
 
     return c.json(options)
 })
@@ -441,7 +441,7 @@ app.post("/projects/:projectId/passkey/login/verify", async (c) => {
         const newUser = user
         newUser.credentials[cred.id].counter = newCounter
 
-        await passkeyRepo.set(["users", userId], newUser)
+        await passkeyRepo.set(["users", userId], newUser, { overwrite: true })
 
         await setSignedCookie(c, "token", await generateJWT(userId), SECRET, {
             httpOnly: true,
@@ -512,11 +512,9 @@ app.post("/projects/:projectId/passkey/sign-initiate", async (c) => {
         }))
     })
 
-    await passkeyRepo.set(
-        ["challenges", options.challenge],
-        data,
-        CHALLENGE_TTL
-    )
+    await passkeyRepo.set(["challenges", options.challenge], data, {
+        expireIn: CHALLENGE_TTL
+    })
 
     console.log("options", options)
 
@@ -575,7 +573,9 @@ app.post("/projects/:projectId/passkey/sign-verify", async (c) => {
         const signature = cred.response.signature
         const publicKey = user.credentials[cred.id].credentialPublicKey
         const publicKeyBase64 = btoa(
-            String.fromCharCode(...new Uint8Array(publicKey.buffer))
+            String.fromCharCode(
+                ...new Uint8Array(base64urlToUint8Array(publicKey))
+            )
         )
 
         const authenticatorData = cred.response.authenticatorData
