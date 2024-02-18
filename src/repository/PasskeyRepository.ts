@@ -61,11 +61,10 @@ export default PasskeyRepository
 function getDomainFromUrl(url: string): string {
     try {
         const hostname = new URL(url).hostname
-        const parts = hostname.split(".")
-        const domain = parts.length > 2 ? parts[parts.length - 2] : parts[0]
-        return domain
+        // Directly return the hostname for RP ID purposes
+        return hostname
     } catch (error) {
-        console.error("Invalid URL")
+        console.error("Invalid URL:", error)
         return ""
     }
 }
