@@ -1,10 +1,11 @@
-import { z } from 'zod'
-import { extendApi, generateSchema } from '@anatine/zod-openapi';
-import { OpenAPIV3 } from 'openapi-types';
+import { z } from "zod"
+import { extendApi } from "@anatine/zod-openapi"
 
-export const passkeyDomainObject = extendApi(z.object({
-  passkeyDomain: extendApi(z.string().url(), {
-    description: 'URL for the passkey domain',
-    example: 'http://zerodev.app'
-  }),
-}))
+export const passkeyDomainObject = extendApi(
+    z.object({
+        passkeyDomain: extendApi(z.string().url(), {
+            description: "URL for the passkey domain",
+            example: "http://zerodev.app"
+        })
+    })
+)
