@@ -13,7 +13,7 @@ import { KernelAccountClient, KernelSmartAccount } from "@zerodev/sdk"
 const projectId = "06cf2ab0-9a15-4049-b826-c6a61b62ef17"
 // const URL = `http://localhost:4003/projects/${projectId}/passkey`
 // const URL = 'http://localhost:8080'
-const url = `https://passkeys.zerodev.app/api/v2/${projectId}/passkey`
+const url = `https://passkeys.zerodev.app/api/v2/${projectId}`
 
 let account
 let kernelClient: KernelAccountClient<Transport, Chain, KernelSmartAccount>
