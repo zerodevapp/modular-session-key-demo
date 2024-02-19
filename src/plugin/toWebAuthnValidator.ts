@@ -188,8 +188,7 @@ export async function createPasskeyValidator<
             const clientDataJSON = atob(cred.response.clientDataJSON)
 
             // get challenge and response type location
-            const { beforeType, beforeChallenge } =
-                findQuoteIndices(clientDataJSON)
+            const { beforeType } = findQuoteIndices(clientDataJSON)
 
             // get signature r,s
             const signature = verifyResult.signature
@@ -201,7 +200,6 @@ export async function createPasskeyValidator<
                 [
                     { name: "authenticatorData", type: "bytes" },
                     { name: "clientDataJSON", type: "string" },
-                    { name: "challengeLocation", type: "uint256" },
                     { name: "responseTypeLocation", type: "uint256" },
                     { name: "r", type: "uint256" },
                     { name: "s", type: "uint256" },
@@ -210,7 +208,6 @@ export async function createPasskeyValidator<
                 [
                     authenticatorDataHex,
                     clientDataJSON,
-                    beforeChallenge,
                     beforeType,
                     BigInt(r),
                     BigInt(s),
@@ -296,7 +293,6 @@ export async function createPasskeyValidator<
                 [
                     { name: "authenticatorData", type: "bytes" },
                     { name: "clientDataJSON", type: "string" },
-                    { name: "challengeLocation", type: "uint256" },
                     { name: "responseTypeLocation", type: "uint256" },
                     { name: "r", type: "uint256" },
                     { name: "s", type: "uint256" },
@@ -305,7 +301,6 @@ export async function createPasskeyValidator<
                 [
                     "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
                     '{"type":"webauthn.get","challenge":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","origin":"https://example.com"}',
-                    maxUint256,
                     maxUint256,
                     11111111111111111111111111111111111111111111111111111111111111111111111111111n,
                     22222222222222222222222222222222222222222222222222222222222222222222222222222n,
@@ -465,8 +460,7 @@ export async function getPasskeyValidator<
             const clientDataJSON = atob(cred.response.clientDataJSON)
 
             // get challenge and response type location
-            const { beforeType, beforeChallenge } =
-                findQuoteIndices(clientDataJSON)
+            const { beforeType } = findQuoteIndices(clientDataJSON)
 
             // get signature r,s
             const signature = verifyResult.signature
@@ -478,7 +472,6 @@ export async function getPasskeyValidator<
                 [
                     { name: "authenticatorData", type: "bytes" },
                     { name: "clientDataJSON", type: "string" },
-                    { name: "challengeLocation", type: "uint256" },
                     { name: "responseTypeLocation", type: "uint256" },
                     { name: "r", type: "uint256" },
                     { name: "s", type: "uint256" },
@@ -487,7 +480,6 @@ export async function getPasskeyValidator<
                 [
                     authenticatorDataHex,
                     clientDataJSON,
-                    beforeChallenge,
                     beforeType,
                     BigInt(r),
                     BigInt(s),
@@ -573,7 +565,6 @@ export async function getPasskeyValidator<
                 [
                     { name: "authenticatorData", type: "bytes" },
                     { name: "clientDataJSON", type: "string" },
-                    { name: "challengeLocation", type: "uint256" },
                     { name: "responseTypeLocation", type: "uint256" },
                     { name: "r", type: "uint256" },
                     { name: "s", type: "uint256" },
@@ -582,7 +573,6 @@ export async function getPasskeyValidator<
                 [
                     "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
                     '{"type":"webauthn.get","challenge":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","origin":"https://example.com"}',
-                    maxUint256,
                     maxUint256,
                     11111111111111111111111111111111111111111111111111111111111111111111111111111n,
                     22222222222222222222222222222222222222222222222222222222222222222222222222222n,
