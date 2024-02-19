@@ -42,9 +42,7 @@ class PasskeyRepository {
         await redisClient.del(JSON.stringify(key))
     }
 
-    async getPasskeyDomainByProjectId(
-        projectId: string
-    ): Promise<string | null> {
+    async getPasskeyDomainByProjectId(projectId: string): Promise<string> {
         const result = await (
             await db
         ).maybeOne(sql.type(passkeyDomainObject)`
@@ -54,10 +52,10 @@ class PasskeyRepository {
     `)
         console.log({ result })
         if (!result) {
-            return null
+            // if no passkey domain is found, return localhost
+            return "localhost"
         }
         return getDomainFromUrl(result.passkeyDomain)
-        return result?.passkeyDomain || null
     }
 }
 

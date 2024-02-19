@@ -223,11 +223,6 @@ app.post("/api/v2/:projectId/passkey/register/options", async (c) => {
     const passkeyRepo = new PasskeyRepository()
 
     const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
-    console.log("domainName", domainName)
-
-    if (!domainName) {
-        return c.json({ error: "Project domain not found" }, { status: 404 })
-    }
 
     const userID = generateRandomID()
 
@@ -297,10 +292,6 @@ app.post("/api/v2/:projectId/passkey/register/verify", async (c) => {
         c.req.param("projectId")
     )
 
-    if (!domainName) {
-        return c.json({ error: "Project domain not found" }, { status: 404 })
-    }
-
     const clientData = JSON.parse(atob(cred.response.clientDataJSON))
 
     const challenge = await passkeyRepo.get([
@@ -362,9 +353,6 @@ app.post("/api/v2/:projectId/passkey/login/options", async (c) => {
     const passkeyRepo = new PasskeyRepository()
 
     const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
-    if (!domainName) {
-        return c.json({ error: "Project domain not found" }, { status: 404 })
-    }
 
     const options = await generateAuthenticationOptions({
         userVerification: "required",
@@ -383,9 +371,6 @@ app.post("/api/v2/:projectId/passkey/login/verify", async (c) => {
     const passkeyRepo = new PasskeyRepository()
 
     const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
-    if (!domainName) {
-        return c.json({ error: "Project domain not found" }, { status: 404 })
-    }
 
     const { cred } = await c.req.json<{ cred: AuthenticationResponseJSON }>()
 
@@ -468,9 +453,6 @@ app.post("/api/v2/:projectId/passkey/sign-initiate", async (c) => {
     const passkeyRepo = new PasskeyRepository()
 
     const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
-    if (!domainName) {
-        return c.json({ error: "Project domain not found" }, { status: 404 })
-    }
 
     const { data } = await c.req.json<{ data: string }>()
     const token = await getSignedCookie(c, SECRET, "token")
@@ -531,9 +513,6 @@ app.post("/api/v2/:projectId/passkey/sign-verify", async (c) => {
     const passkeyRepo = new PasskeyRepository()
 
     const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
-    if (!domainName) {
-        return c.json({ error: "Project domain not found" }, { status: 404 })
-    }
 
     const { cred } = await c.req.json<{ cred: AuthenticationResponseJSON }>()
     const clientData = JSON.parse(atob(cred.response.clientDataJSON))
