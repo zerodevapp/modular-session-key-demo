@@ -246,7 +246,7 @@ app.post("/api/v2/:projectId/passkey/register/options", async (c) => {
 
     console.log({ options })
 
-    passkeyRepo.set(["challenges", options.challenge], true, {
+    passkeyRepo.set(["challenges", domainName, options.challenge], true, {
         expireIn: CHALLENGE_TTL
     })
 
@@ -326,7 +326,7 @@ app.post("/api/v2/:projectId/passkey/register/verify", async (c) => {
 
         await passkeyRepo.delete(["challenges", clientData.challenge])
 
-        await passkeyRepo.set(["users", userId], {
+        await passkeyRepo.set(["users", domainName, userId], {
             username: username,
             data: "Private user data for " + (username || "Anon"),
             credentials: {
@@ -370,7 +370,7 @@ app.post("/api/v2/:projectId/passkey/login/options", async (c) => {
         rpID: domainName
     })
 
-    await passkeyRepo.set(["challenges", options.challenge], true, {
+    await passkeyRepo.set(["challenges", domainName, options.challenge], true, {
         expireIn: CHALLENGE_TTL
     })
 
@@ -399,12 +399,13 @@ app.post("/api/v2/:projectId/passkey/login/verify", async (c) => {
     const userId = cred.response.userHandle
     if (!userId) return c.json({ error: "Unauthorized" }, { status: 401 })
 
-    const user = await passkeyRepo.get<User>(["users", userId])
+    const user = await passkeyRepo.get<User>(["users", domainName, userId])
     if (!user) return c.json({ error: "Unauthorized" }, { status: 401 })
     console.log({ user })
 
     const challenge = await passkeyRepo.get<Challenge>([
         "challenges",
+        domainName,
         clientData.challenge
     ])
     if (!challenge) {
@@ -441,7 +442,9 @@ app.post("/api/v2/:projectId/passkey/login/verify", async (c) => {
         const newUser = user
         newUser.credentials[cred.id].counter = newCounter
 
-        await passkeyRepo.set(["users", userId], newUser, { overwrite: true })
+        await passkeyRepo.set(["users", domainName, userId], newUser, {
+            overwrite: true
+        })
 
         await setSignedCookie(c, "token", await generateJWT(userId), SECRET, {
             httpOnly: true,
@@ -475,6 +478,7 @@ app.post("/api/v2/:projectId/passkey/sign-initiate", async (c) => {
     const result = await verifyJWT(token)
     const user = await passkeyRepo.get<User>([
         "users",
+        domainName,
         result.payload.userId as string
     ])
     if (!user) return new Response("Unauthorized", { status: 401 })
@@ -512,7 +516,7 @@ app.post("/api/v2/:projectId/passkey/sign-initiate", async (c) => {
         }))
     })
 
-    await passkeyRepo.set(["challenges", options.challenge], data, {
+    await passkeyRepo.set(["challenges", domainName, options.challenge], data, {
         expireIn: CHALLENGE_TTL
     })
 
@@ -534,12 +538,14 @@ app.post("/api/v2/:projectId/passkey/sign-verify", async (c) => {
     const clientData = JSON.parse(atob(cred.response.clientDataJSON))
     const challenge = await passkeyRepo.get<string>([
         "challenges",
+        domainName,
         clientData.challenge
     ])
     if (!challenge) return c.text("Invalid challenge", 400)
 
     const user = await passkeyRepo.get<User>([
         "users",
+        domainName,
         cred.response.userHandle as string
     ])
     if (!user) return c.text("Unauthorized", 401)
