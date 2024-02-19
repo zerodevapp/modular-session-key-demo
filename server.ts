@@ -503,7 +503,8 @@ app.post("/api/v2/:projectId/sign-initiate", async (c) => {
     console.log("options challenge", options.challenge)
 
     await passkeyRepo.set(["challenges", domainName, options.challenge], data, {
-        expireIn: CHALLENGE_TTL
+        expireIn: CHALLENGE_TTL,
+        overwrite: true
     })
 
     console.log("options", options)
