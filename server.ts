@@ -305,6 +305,7 @@ app.post("/api/v2/:projectId/passkey/register/verify", async (c) => {
 
     const challenge = await passkeyRepo.get([
         "challenges",
+        domainName,
         clientData.challenge
     ])
 
