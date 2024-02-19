@@ -499,6 +499,8 @@ app.post("/api/v2/:projectId/sign-initiate", async (c) => {
         }))
     })
 
+    console.log("here")
+
     await passkeyRepo.set(["challenges", domainName, options.challenge], data, {
         expireIn: CHALLENGE_TTL
     })
