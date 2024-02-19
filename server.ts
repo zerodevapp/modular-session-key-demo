@@ -216,7 +216,7 @@ app.get("/", serveStatic({ path: "./index.html" }))
 //     return c.json({ r: r.toString(), s: s.toString(), x, y })
 // })
 
-app.post("/projects/:projectId/passkey/register/options", async (c) => {
+app.post("/api/v2/:projectId/passkey/register/options", async (c) => {
     const { username } = await c.req.json<{ username: string }>()
 
     const projectId = c.req.param("projectId")
@@ -274,7 +274,7 @@ app.post("/projects/:projectId/passkey/register/options", async (c) => {
 //     return c.json({ publicKey: publicKeyBase64 })
 // })
 
-app.post("/projects/:projectId/passkey/register/verify", async (c) => {
+app.post("/api/v2/:projectId/passkey/register/verify", async (c) => {
     // const validationResult = registerVerifySchema.safeParse(c.body)
     // if (!validationResult.success) {
     //     return c.json({ error: "Invalid request data" }, { status: 400 })
@@ -356,7 +356,7 @@ app.post("/projects/:projectId/passkey/register/verify", async (c) => {
 
 app.get("/v1/health", (c) => c.json({ status: "ok" }))
 
-app.post("/projects/:projectId/passkey/login/options", async (c) => {
+app.post("/api/v2/:projectId/passkey/login/options", async (c) => {
     const projectId = c.req.param("projectId")
     const passkeyRepo = new PasskeyRepository()
 
@@ -377,7 +377,7 @@ app.post("/projects/:projectId/passkey/login/options", async (c) => {
     return c.json(options)
 })
 
-app.post("/projects/:projectId/passkey/login/verify", async (c) => {
+app.post("/api/v2/:projectId/passkey/login/verify", async (c) => {
     const projectId = c.req.param("projectId")
     const passkeyRepo = new PasskeyRepository()
 
@@ -459,7 +459,7 @@ app.post("/projects/:projectId/passkey/login/verify", async (c) => {
     return c.text("Unauthorized", 401)
 })
 
-app.post("/projects/:projectId/passkey/sign-initiate", async (c) => {
+app.post("/api/v2/:projectId/passkey/sign-initiate", async (c) => {
     const projectId = c.req.param("projectId")
     const passkeyRepo = new PasskeyRepository()
 
@@ -521,7 +521,7 @@ app.post("/projects/:projectId/passkey/sign-initiate", async (c) => {
     return c.json(options)
 })
 
-app.post("/projects/:projectId/passkey/sign-verify", async (c) => {
+app.post("/api/v2/:projectId/passkey/sign-verify", async (c) => {
     const projectId = c.req.param("projectId")
     const passkeyRepo = new PasskeyRepository()
 
