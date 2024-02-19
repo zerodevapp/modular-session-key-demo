@@ -10,10 +10,10 @@ import {
 } from "./utils"
 import { KernelAccountClient, KernelSmartAccount } from "@zerodev/sdk"
 
-const projectId = "003c65f3-1e17-42fc-a130-774524a70e30"
+const projectId = "06cf2ab0-9a15-4049-b826-c6a61b62ef17"
 // const URL = `http://localhost:4003/projects/${projectId}/passkey`
 // const URL = 'http://localhost:8080'
-const url = `https://webauthn-demo-server.onrender.com/projects/${projectId}/passkey`
+const url = `https://passkeys.zerodev.app/api/v2/${projectId}/passkey`
 
 let account
 let kernelClient: KernelAccountClient<Transport, Chain, KernelSmartAccount>
