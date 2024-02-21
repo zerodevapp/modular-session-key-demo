@@ -6,6 +6,7 @@ import {
 } from "@simplewebauthn/server"
 import type {
     AuthenticationResponseJSON,
+    Base64URLString,
     RegistrationResponseJSON
 } from "@simplewebauthn/typescript-types"
 import { jwtVerify, SignJWT } from "jose"
@@ -14,6 +15,7 @@ import { getSignedCookie, setSignedCookie } from "hono/cookie"
 import { serveStatic } from "hono/bun"
 import { logger } from "hono/logger"
 import { cors } from "hono/cors"
+import { z } from "zod"
 import {
     parseMakeCredAuthData,
     parseCreateResponse,
@@ -29,51 +31,25 @@ import {
 import { AuthenticatorDevice } from "@simplewebauthn/typescript-types"
 import { base64URLStringToBuffer } from "@simplewebauthn/browser"
 import { encodeAbiParameters } from "viem"
+import PasskeyRepository from "./src/repository/PasskeyRepository"
+
+// TODO: make the key more unique
 
 // CONSTANTS
 
 const SECRET = new TextEncoder().encode(process.env.JWT_SECRET ?? "development")
-const RP_ID = process.env.WEBAUTHN_RP_ID ?? "localhost"
-const RP_NAME = process.env.WEBAUTHN_RP_NAME ?? "Bun Passkeys Demo"
+// const RP_ID = process.env.WEBAUTHN_RP_ID ?? "localhost"
+// const RP_NAME = process.env.WEBAUTHN_RP_NAME ?? "Bun Passkeys Demo"
 const CHALLENGE_TTL = Number(process.env.WEBAUTHN_CHALLENGE_TTL) || 60_000
 
 // UTILS
-// Define a simple in-memory KV store interface
-interface KVStore {
-    get<T>(key: (string | number)[]): Promise<{ value: T | undefined }>
-    set(
-        key: (string | number)[],
-        value: any,
-        options?: { expireIn: number }
-    ): Promise<void>
-    delete(key: (string | number)[]): Promise<void>
-}
+const registerOptionsSchema = z.object({
+    username: z.string().min(1)
+})
 
-// Implement the KV store interface
-class InMemoryKVStore implements KVStore {
-    private store = new Map<string, any>()
-
-    async get<T>(key: (string | number)[]): Promise<{ value: T | undefined }> {
-        const value = this.store.get(JSON.stringify(key))
-        return { value }
-    }
-
-    async set(
-        key: (string | number)[],
-        value: any,
-        options?: { expireIn: number }
-    ): Promise<void> {
-        // This example does not handle expiration. Implement if needed.
-        this.store.set(JSON.stringify(key), value)
-    }
-
-    async delete(key: (string | number)[]): Promise<void> {
-        this.store.delete(JSON.stringify(key))
-    }
-}
-
-// Initialize the KV store
-const kv: KVStore = new InMemoryKVStore()
+const registerVerifySchema = z.object({
+    username: z.string().min(1)
+})
 
 function generateJWT(userId: string) {
     return new SignJWT({ userId })
@@ -175,6 +151,14 @@ function base64urlToUint8Array(base64url: string): Uint8Array {
     return outputArray
 }
 
+function uint8ArrayToBase64(uint8Array: Uint8Array): string {
+    return Buffer.from(uint8Array).toString("base64")
+}
+
+function fromBase64ToUint8Array(base64String): Uint8Array {
+    return Uint8Array.from(Buffer.from(base64String, "base64"))
+}
+
 type User = {
     username: string
     data: string
@@ -183,12 +167,12 @@ type User = {
 
 type Credential = {
     pubKey?: string
-    credentialID: Uint8Array
-    credentialPublicKey: Uint8Array
+    credentialID: Base64URLString // serialize to handle Uint8Array in Redis
+    credentialPublicKey: Base64URLString // serialize to handle Uint8Array in Redis
     counter: number
 }
 
-type Challenge = true
+type Challenge = boolean
 
 // RP SERVER
 
@@ -202,45 +186,49 @@ app.get("/index.js", serveStatic({ path: "./index.js" }))
 
 app.get("/", serveStatic({ path: "./index.html" }))
 
-app.get("/dummy-signature/:userId", async (c) => {
-    const userId = c.req.param("userId")
+// app.get("/dummy-signature/:userId", async (c) => {
+//     const userId = c.req.param("userId")
 
-    // Ensure the userId is provided
-    if (!userId) {
-        return c.text("User ID is required", 400)
-    }
+//     // Ensure the userId is provided
+//     if (!userId) {
+//         return c.text("User ID is required", 400)
+//     }
 
-    // Retrieve the dummy signature from the KV store
-    const dummySignatureData = await kv.get<string>(["dummySignature", userId])
+//     // Retrieve the dummy signature from the KV store
+//     const dummySignatureData = await kv.get<string>(["dummySignature", userId])
 
-    // Check if the dummy signature exists
-    if (!dummySignatureData.value) {
-        return c.text("Dummy signature not found", 404)
-    }
+//     // Check if the dummy signature exists
+//     if (!dummySignatureData) { // Don't need to use .value
+//         return c.text("Dummy signature not found", 404)
+//     }
 
-    // Return the dummy signature to the client
-    return c.json({ dummySignature: dummySignatureData.value })
-})
+//     // Return the dummy signature to the client
+//     return c.json({ dummySignature: dummySignatureData.value })
+// })
 
-// Add new endpoint to process and display data
-app.post("/process-authentication", async (c) => {
-    const { cred } = await c.req.json()
-    const parsedData = parseSignResponse(cred)
-    const { r, s } = parseAndNormalizeSig(parsedData.derSig)
-    const [x, y] = derKeytoContractFriendlyKey(parseCreateResponse(cred))
+// // Add new endpoint to process and display data
+// app.post("/process-authentication", async (c) => {
+//     const { cred } = await c.req.json()
+//     const parsedData = parseSignResponse(cred)
+//     const { r, s } = parseAndNormalizeSig(parsedData.derSig)
+//     const [x, y] = derKeytoContractFriendlyKey(parseCreateResponse(cred))
 
-    return c.json({ r: r.toString(), s: s.toString(), x, y })
-})
+//     return c.json({ r: r.toString(), s: s.toString(), x, y })
+// })
 
-app.post("/register/options", async (c) => {
+app.post("/api/v2/:projectId/register/options", async (c) => {
     const { username } = await c.req.json<{ username: string }>()
-    console.log({ username })
+
+    const projectId = c.req.param("projectId")
+    const passkeyRepo = new PasskeyRepository()
+
+    const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
 
     const userID = generateRandomID()
 
     const options = await generateRegistrationOptions({
-        rpName: RP_NAME,
-        rpID: RP_ID,
+        rpName: domainName,
+        rpID: domainName,
         userID,
         userName: username,
         userDisplayName: username,
@@ -253,7 +241,7 @@ app.post("/register/options", async (c) => {
 
     console.log({ options })
 
-    await kv.set(["challenges", options.challenge], true, {
+    passkeyRepo.set(["challenges", domainName, options.challenge], true, {
         expireIn: CHALLENGE_TTL
     })
 
@@ -268,73 +256,77 @@ app.post("/register/options", async (c) => {
     return c.json(options)
 })
 
-app.get("/public-key/:credentialId", async (c) => {
-    const credentialId = c.req.param("credentialId")
-    const user = await kv.get<User>(["credentials", credentialId])
-    if (!user.value) return c.text("Credential not found", 404)
+// app.get("/public-key/:credentialId", async (c) => {
+//     const credentialId = c.req.param("credentialId")
+//     const user = await kv.get<User>(["credentials", credentialId])
+//     if (!user.value) return c.text("Credential not found", 404)
 
-    const publicKey = user.value.credentials[credentialId].credentialPublicKey
-    const publicKeyBase64 = btoa(
-        String.fromCharCode(...new Uint8Array(publicKey.buffer))
-    )
+//     const publicKey = user.value.credentials[credentialId].credentialPublicKey
+//     const publicKeyBase64 = btoa(
+//         String.fromCharCode(...new Uint8Array(publicKey.buffer))
+//     )
 
-    return c.json({ publicKey: publicKeyBase64 })
-})
+//     return c.json({ publicKey: publicKeyBase64 })
+// })
 
-app.post("/register/verify", async (c) => {
-    console.log("Request headers:", c.req.raw.headers)
-    console.log("Cookies:", c.req.raw.headers.get("cookie"))
+app.post("/api/v2/:projectId/register/verify", async (c) => {
+    // const validationResult = registerVerifySchema.safeParse(c.body)
+    // if (!validationResult.success) {
+    //     return c.json({ error: "Invalid request data" }, { status: 400 })
+    // }
 
     const { username, cred } = await c.req.json<{
         username: string
         cred: RegistrationResponseJSON
     }>()
-    console.log("register username and cred", { username, cred })
 
     // base64url to Uint8Array
     const pubKey = cred.response.publicKey!
-    console.log("register public key", { pubKey })
 
     const userId = await getSignedCookie(c, SECRET, "userId")
     if (!userId) return new Response("Unauthorized", { status: 401 })
-    console.log("register user Id", { userId })
+
+    const passkeyRepo = new PasskeyRepository()
+
+    const domainName = await passkeyRepo.getPasskeyDomainByProjectId(
+        c.req.param("projectId")
+    )
 
     const clientData = JSON.parse(atob(cred.response.clientDataJSON))
-    console.log("register client data", { clientData })
 
-    const challenge = await kv.get<Challenge>([
+    const challenge = await passkeyRepo.get([
         "challenges",
+        domainName,
         clientData.challenge
     ])
-    console.log({ challenge })
 
-    if (!challenge.value) {
+    if (!challenge) {
         return c.text("Invalid challenge", 400)
     }
 
     const verification = await verifyRegistrationResponse({
         response: cred,
         expectedChallenge: clientData.challenge,
-        expectedRPID: RP_ID,
+        expectedRPID: domainName,
         expectedOrigin: c.req.header("origin")!, //! Allow from any origin
         requireUserVerification: true
     })
-    console.log("Register Verification", { verification })
 
     if (verification.verified) {
         const { credentialID, credentialPublicKey, counter } =
             verification.registrationInfo!
 
-        await kv.delete(["challenges", clientData.challenge])
+        await passkeyRepo.delete(["challenges", clientData.challenge])
 
-        await kv.set(["users", userId], {
+        await passkeyRepo.set(["users", domainName, userId], {
             username: username,
             data: "Private user data for " + (username || "Anon"),
             credentials: {
                 [cred.id]: {
                     pubKey,
-                    credentialID,
-                    credentialPublicKey,
+                    credentialID: uint8ArrayToBase64(credentialID),
+                    credentialPublicKey:
+                        uint8ArrayToBase64(credentialPublicKey),
                     counter
                 }
             }
@@ -356,24 +348,31 @@ app.post("/register/verify", async (c) => {
 
 app.get("/v1/health", (c) => c.json({ status: "ok" }))
 
-app.post("/login/options", async (c) => {
+app.post("/api/v2/:projectId/login/options", async (c) => {
+    const projectId = c.req.param("projectId")
+    const passkeyRepo = new PasskeyRepository()
+
+    const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
+
     const options = await generateAuthenticationOptions({
         userVerification: "required",
-        rpID: RP_ID
+        rpID: domainName
     })
 
-    console.log({ options })
-
-    await kv.set(["challenges", options.challenge], true, {
+    await passkeyRepo.set(["challenges", domainName, options.challenge], true, {
         expireIn: CHALLENGE_TTL
     })
 
     return c.json(options)
 })
 
-app.post("/login/verify", async (c) => {
+app.post("/api/v2/:projectId/login/verify", async (c) => {
+    const projectId = c.req.param("projectId")
+    const passkeyRepo = new PasskeyRepository()
+
+    const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
+
     const { cred } = await c.req.json<{ cred: AuthenticationResponseJSON }>()
-    console.log({ cred })
 
     const clientData = JSON.parse(atob(cred.response.clientDataJSON))
 
@@ -384,50 +383,54 @@ app.post("/login/verify", async (c) => {
     }
 
     const userId = cred.response.userHandle
-    console.log({ userId })
     if (!userId) return c.json({ error: "Unauthorized" }, { status: 401 })
 
-    const user = await kv.get<User>(["users", userId])
-    console.log("Fetched user from KV store:", user)
-    if (!user.value) return c.json({ error: "Unauthorized" }, { status: 401 })
+    const user = await passkeyRepo.get<User>(["users", domainName, userId])
+    if (!user) return c.json({ error: "Unauthorized" }, { status: 401 })
     console.log({ user })
 
-    const challenge = await kv.get<Challenge>([
+    const challenge = await passkeyRepo.get<Challenge>([
         "challenges",
+        domainName,
         clientData.challenge
     ])
-    console.log("Fetched challenge from KV store:", challenge)
-    if (!challenge.value) {
+    if (!challenge) {
         return c.text("Invalid challenge", 400)
     }
 
-    console.log("Verifying authentication response with:", {
-        response: cred,
-        expectedChallenge: clientData.challenge,
-        expectedOrigin: c.req.header("origin"),
-        expectedRPID: RP_ID,
-        authenticator: user.value.credentials[cred.id]
-    })
+    const credential = user.credentials[cred.id]
+
+    // Convert from Base64 to Uint8Array
+    const credentialID = base64urlToUint8Array(
+        credential.credentialID as string
+    )
+    const credentialPublicKey = base64urlToUint8Array(
+        credential.credentialPublicKey as string
+    )
 
     const verification = await verifyAuthenticationResponse({
         response: cred,
         expectedChallenge: clientData.challenge,
         expectedOrigin: c.req.header("origin")!, //! Allow from any origin
-        expectedRPID: RP_ID,
-        authenticator: user.value.credentials[cred.id]
+        expectedRPID: domainName,
+        authenticator: {
+            ...credential,
+            credentialID: credentialID,
+            credentialPublicKey: credentialPublicKey
+        }
     })
-
-    console.log("Verification result:", verification)
 
     if (verification.verified) {
         const { newCounter } = verification.authenticationInfo
 
-        await kv.delete(["challenges", clientData.challenge])
+        await passkeyRepo.delete(["challenges", clientData.challenge])
 
-        const newUser = user.value
+        const newUser = user
         newUser.credentials[cred.id].counter = newCounter
 
-        await kv.set(["users", userId], newUser)
+        await passkeyRepo.set(["users", domainName, userId], newUser, {
+            overwrite: true
+        })
 
         await setSignedCookie(c, "token", await generateJWT(userId), SECRET, {
             httpOnly: true,
@@ -437,71 +440,33 @@ app.post("/login/verify", async (c) => {
             maxAge: 600_000
         })
 
-        const existingDummySignature = await kv.get<string>([
-            "dummySignature",
-            userId
-        ])
-        if (existingDummySignature.value) {
-            console.log("Dummy signature already exists for userId:", userId)
-            return c.json({
-                verification,
-                pubkey: user.value.credentials[cred.id].pubKey
-            })
-        }
-        const signature = cred.response.signature
-        const authenticatorData = cred.response.authenticatorData
-
-        const authenticatorDataHex = uint8ArrayToHexString(
-            b64ToBytes(authenticatorData)
-        )
-        const signatureHex = uint8ArrayToHexString(b64ToBytes(signature))
-        const { r, s } = splitECDSASignature(signatureHex)
-        const { beforeType, beforeChallenge } = findQuoteIndices(clientDataJSON)
-
-        const dummySignature = encodeAbiParameters(
-            [
-                { name: "authenticatorData", type: "bytes" },
-                { name: "clientDataJSON", type: "string" },
-                { name: "challengeLocation", type: "uint256" },
-                { name: "responseTypeLocation", type: "uint256" },
-                { name: "r", type: "uint256" },
-                { name: "s", type: "uint256" }
-            ],
-            [
-                authenticatorDataHex,
-                clientDataJSON,
-                beforeChallenge as bigint,
-                beforeType as bigint,
-                BigInt(r),
-                BigInt(s)
-            ]
-        )
-
-        console.log("dummySignature", dummySignature)
-        kv.set(["dummySignature", userId], dummySignature)
-
         return c.json({
             verification,
-            pubkey: user.value.credentials[cred.id].pubKey
+            pubkey: user.credentials[cred.id].pubKey
         })
     }
-    console.log("Verification failed for user:", userId)
-
     return c.text("Unauthorized", 401)
 })
 
-app.post("/sign-initiate", async (c) => {
+app.post("/api/v2/:projectId/sign-initiate", async (c) => {
+    const projectId = c.req.param("projectId")
+    const passkeyRepo = new PasskeyRepository()
+
+    const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
+
     const { data } = await c.req.json<{ data: string }>()
     const token = await getSignedCookie(c, SECRET, "token")
     if (!token) return new Response("Unauthorized", { status: 401 })
 
     const result = await verifyJWT(token)
-    const user = await kv.get<User>(["users", result.payload.userId as string])
-    if (!user.value) return new Response("Unauthorized", { status: 401 })
+    const user = await passkeyRepo.get<User>([
+        "users",
+        domainName,
+        result.payload.userId as string
+    ])
+    if (!user) return new Response("Unauthorized", { status: 401 })
 
-    const credentialsArray = Object.values(user.value.credentials)
-
-    console.log("challenge data", data)
+    console.log("user", user)
 
     // Utility function to convert hex string to Uint8Array
     function hexStringToUint8Array(hexString: string): Uint8Array {
@@ -516,57 +481,94 @@ app.post("/sign-initiate", async (c) => {
     // Convert data (hex string) to Uint8Array
     const dataUint8Array = hexStringToUint8Array(data)
 
+    const credentialsArray = Object.values(user.credentials)
+
+    const transformedCredentials = credentialsArray.map((cred) => ({
+        ...cred,
+        credentialID: fromBase64ToUint8Array(cred.credentialID),
+        credentialPublicKey: fromBase64ToUint8Array(cred.credentialPublicKey)
+    }))
+
     const options = await generateAuthenticationOptions({
         challenge: dataUint8Array,
         userVerification: "required",
-        rpID: RP_ID,
-        allowCredentials: credentialsArray.map((cred) => ({
+        rpID: domainName,
+        allowCredentials: transformedCredentials.map((cred) => ({
             id: cred.credentialID,
             type: "public-key"
         }))
     })
 
-    await kv.set(["challenges", options.challenge], data, {
-        expireIn: CHALLENGE_TTL
+    await passkeyRepo.set(["challenges", domainName, options.challenge], data, {
+        expireIn: CHALLENGE_TTL,
+        overwrite: true
     })
 
-    console.log("options challenge", options.challenge)
+    console.log("options", options)
 
     return c.json(options)
 })
 
-app.post("/sign-verify", async (c) => {
+app.post("/api/v2/:projectId/sign-verify", async (c) => {
+    const projectId = c.req.param("projectId")
+    const passkeyRepo = new PasskeyRepository()
+
+    const domainName = await passkeyRepo.getPasskeyDomainByProjectId(projectId)
+
     const { cred } = await c.req.json<{ cred: AuthenticationResponseJSON }>()
     const clientData = JSON.parse(atob(cred.response.clientDataJSON))
-    const challenge = await kv.get<string>(["challenges", clientData.challenge])
-    if (!challenge.value) return c.text("Invalid challenge", 400)
+    const challenge = await passkeyRepo.get<string>([
+        "challenges",
+        domainName,
+        clientData.challenge
+    ])
+    if (!challenge) return c.text("Invalid challenge", 400)
 
-    const user = await kv.get<User>([
+    const user = await passkeyRepo.get<User>([
         "users",
+        domainName,
         cred.response.userHandle as string
     ])
-    if (!user.value) return c.text("Unauthorized", 401)
+    if (!user) return c.text("Unauthorized", 401)
+
+    console.log("cred", cred)
+
+    const credential = user.credentials[cred.id]
+
+    // Convert from Base64 to Uint8Array
+    const credentialID = base64urlToUint8Array(
+        credential.credentialID as string
+    )
+    const credentialPublicKey = base64urlToUint8Array(
+        credential.credentialPublicKey as string
+    )
 
     const verification = await verifyAuthenticationResponse({
         response: cred,
         expectedChallenge: clientData.challenge,
         expectedOrigin: c.req.header("origin")!,
-        expectedRPID: RP_ID,
-        authenticator: user.value.credentials[cred.id]
+        expectedRPID: domainName,
+        authenticator: {
+            ...credential,
+            credentialID: credentialID,
+            credentialPublicKey: credentialPublicKey
+        }
     })
 
     if (verification.verified) {
-        await kv.delete(["challenges", clientData.challenge])
+        await passkeyRepo.delete(["challenges", clientData.challenge])
         const signature = cred.response.signature
-        const publicKey = user.value.credentials[cred.id].credentialPublicKey
+        const publicKey = user.credentials[cred.id].credentialPublicKey
         const publicKeyBase64 = btoa(
-            String.fromCharCode(...new Uint8Array(publicKey.buffer))
+            String.fromCharCode(
+                ...new Uint8Array(base64urlToUint8Array(publicKey))
+            )
         )
-        console.log("publicKeyBase64", publicKeyBase64)
+
         const authenticatorData = cred.response.authenticatorData
         return c.json({
             success: true,
-            signedData: challenge.value,
+            signedData: challenge,
             signature,
             authenticatorData,
             publicKeyBase64
@@ -576,23 +578,23 @@ app.post("/sign-verify", async (c) => {
     }
 })
 
-app.get("/private", async (c) => {
-    const token = await getSignedCookie(c, SECRET, "token")
-    if (!token) return new Response("Unauthorized", { status: 401 })
-    console.log({ token })
+// app.get("/private", async (c) => {
+//     const token = await getSignedCookie(c, SECRET, "token")
+//     if (!token) return new Response("Unauthorized", { status: 401 })
+//     console.log({ token })
 
-    const result = await verifyJWT(token)
-    console.log({ result })
+//     const result = await verifyJWT(token)
+//     console.log({ result })
 
-    const user = await kv.get<User>(["users", result.payload.userId as string])
-    if (!user.value) return new Response("Unauthorized", { status: 401 })
+//     const user = await kv.get<User>(["users", result.payload.userId as string])
+//     if (!user.value) return new Response("Unauthorized", { status: 401 })
 
-    return c.json({
-        id: result.payload.userId,
-        username: user.value.username || "Anon",
-        data: user.value.data
-    })
-})
+//     return c.json({
+//         id: result.payload.userId,
+//         username: user.value.username || "Anon",
+//         data: user.value.data
+//     })
+// })
 
 // health check
 app.get("/health", (c) => c.json({ status: "ok" }))

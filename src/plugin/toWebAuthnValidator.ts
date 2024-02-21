@@ -1,31 +1,36 @@
 import { Buffer } from "buffer"
 import { KERNEL_ADDRESSES } from "@zerodev/sdk"
 import type { KernelValidator } from "@zerodev/sdk/types"
-import { ValidatorMode } from "@zerodev/sdk/types"
 import type { TypedData } from "abitype"
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { type UserOperation, getUserOperationHash } from "permissionless"
 import { SignTransactionNotSupportedBySmartAccount } from "permissionless/accounts"
 import {
-    encodeAbiParameters,
-    maxUint256,
-    LocalAccount,
     type Address,
     type Chain,
     type Client,
+    type Hex,
+    type LocalAccount,
+    type SignTypedDataParameters,
     type Transport,
-    type TypedDataDefinition
+    type TypedDataDefinition,
+    encodeAbiParameters,
+    getTypesForEIP712Domain,
+    hashTypedData,
+    maxUint256,
+    validateTypedData
 } from "viem"
 import { toAccount } from "viem/accounts"
-import { signMessage, signTypedData } from "viem/actions"
+import { signMessage } from "viem/actions"
 import { getChainId } from "viem/actions"
 import { WEBAUTHN_VALIDATOR_ADDRESS } from "./index.js"
 import { uint8ArrayToHexString } from "../utils.js"
 import {
     b64ToBytes,
     findQuoteIndices,
-    parseAndNormalizeSig
-} from "../../utils.js"
+    parseAndNormalizeSig,
+    isRIP7212SupportedNetwork
+} from "./utils.js"
 
 export async function createPasskeyValidator<
     TTransport extends Transport = Transport,
@@ -60,6 +65,10 @@ export async function createPasskeyValidator<
         credentials: "include"
     })
     const registerOptions = await registerOptionsResponse.json()
+
+    console.log("registerOptions", registerOptions)
+
+    // Start registration
     const registerCred = await startRegistration(registerOptions)
 
     // Verify registration
@@ -77,14 +86,12 @@ export async function createPasskeyValidator<
         throw new Error("Registration not verified")
     }
 
+    // Import the key
     const pubKey = registerCred.response.publicKey
     if (!pubKey) {
         throw new Error("No public key returned from registration credential")
     }
 
-    console.log("register raw pubKey", pubKey)
-
-    // Import the key
     const spkiDer = Buffer.from(pubKey, "base64")
     const key = await crypto.subtle.importKey(
         "spki",
@@ -105,8 +112,8 @@ export async function createPasskeyValidator<
     const pubKeyX = rawKeyBuffer.subarray(1, 33).toString("hex")
     const pubKeyY = rawKeyBuffer.subarray(33).toString("hex")
 
-    console.log("pubKeyX", pubKeyX)
-    console.log("pubKeyY", pubKeyY)
+    // Fetch chain id
+    const chainId = await getChainId(client)
 
     // build account with passkey
     const account: LocalAccount = toAccount({
@@ -140,7 +147,12 @@ export async function createPasskeyValidator<
                 body: JSON.stringify({ data: formattedMessage }),
                 credentials: "include"
             })
+
+            console.log("signInitiateResponse", signInitiateResponse)
+
             const signInitiateResult = await signInitiateResponse.json()
+
+            console.log("signInitiateResult", signInitiateResult)
 
             // prepare assertion options
             const assertionOptions = {
@@ -150,6 +162,7 @@ export async function createPasskeyValidator<
 
             // start authentication (signing)
             const cred = await startAuthentication(assertionOptions)
+            console.log("cred", cred)
 
             // verify signature from server
             const verifyResponse = await fetch(signVerifyUrl, {
@@ -175,8 +188,7 @@ export async function createPasskeyValidator<
             const clientDataJSON = atob(cred.response.clientDataJSON)
 
             // get challenge and response type location
-            const { beforeType, beforeChallenge } =
-                findQuoteIndices(clientDataJSON)
+            const { beforeType } = findQuoteIndices(clientDataJSON)
 
             // get signature r,s
             const signature = verifyResult.signature
@@ -188,18 +200,18 @@ export async function createPasskeyValidator<
                 [
                     { name: "authenticatorData", type: "bytes" },
                     { name: "clientDataJSON", type: "string" },
-                    { name: "challengeLocation", type: "uint256" },
                     { name: "responseTypeLocation", type: "uint256" },
                     { name: "r", type: "uint256" },
-                    { name: "s", type: "uint256" }
+                    { name: "s", type: "uint256" },
+                    { name: "usePrecompiled", type: "bool" }
                 ],
                 [
                     authenticatorDataHex,
                     clientDataJSON,
-                    beforeChallenge,
                     beforeType,
                     BigInt(r),
-                    BigInt(s)
+                    BigInt(s),
+                    isRIP7212SupportedNetwork(chainId)
                 ]
             )
             return encodedSignature
@@ -213,19 +225,24 @@ export async function createPasskeyValidator<
                 | keyof TTypedData
                 | "EIP712Domain" = keyof TTypedData
         >(typedData: TypedDataDefinition<TTypedData, TPrimaryType>) {
-            // TODO: implement
-            return signTypedData<TTypedData, TPrimaryType, TChain, undefined>(
-                client,
-                {
-                    account,
-                    ...typedData
-                }
-            )
+            const { domain, message, primaryType } =
+                typedData as unknown as SignTypedDataParameters
+
+            const types = {
+                EIP712Domain: getTypesForEIP712Domain({ domain }),
+                ...typedData.types
+            }
+
+            validateTypedData({ domain, message, primaryType, types })
+
+            const hash = hashTypedData(typedData)
+            const signature = await signMessage(client, {
+                account,
+                message: hash
+            })
+            return signature
         }
     })
-
-    // Fetch chain id
-    const chainId = await getChainId(client)
 
     return {
         ...account,
@@ -276,24 +293,28 @@ export async function createPasskeyValidator<
                 [
                     { name: "authenticatorData", type: "bytes" },
                     { name: "clientDataJSON", type: "string" },
-                    { name: "challengeLocation", type: "uint256" },
                     { name: "responseTypeLocation", type: "uint256" },
                     { name: "r", type: "uint256" },
-                    { name: "s", type: "uint256" }
+                    { name: "s", type: "uint256" },
+                    { name: "usePrecompiled", type: "bool" }
                 ],
                 [
                     "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
                     '{"type":"webauthn.get","challenge":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","origin":"https://example.com"}',
                     maxUint256,
-                    maxUint256,
                     11111111111111111111111111111111111111111111111111111111111111111111111111111n,
-                    22222222222222222222222222222222222222222222222222222222222222222222222222222n
+                    22222222222222222222222222222222222222222222222222222222222222222222222222222n,
+                    false
                 ]
             )
             return encodedSignature
         },
-        async getValidatorMode() {
-            return ValidatorMode.sudo
+
+        async isEnabled(
+            _kernelAccountAddress: Address,
+            _selector: Hex
+        ): Promise<boolean> {
+            return false
         }
     }
 }
@@ -319,7 +340,7 @@ export async function getPasskeyValidator<
         validatorAddress?: Address
     }
 ): Promise<KernelValidator<"WebAuthnValidator">> {
-    //
+    // Get login options
     const loginOptionsResponse = await fetch(loginOptionUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -327,9 +348,10 @@ export async function getPasskeyValidator<
     })
     const loginOptions = await loginOptionsResponse.json()
 
-    console.log("loginOptions", loginOptions)
+    // Start authentication (login)
     const loginCred = await startAuthentication(loginOptions)
 
+    // Verify authentication
     const loginVerifyResponse = await fetch(loginVerifyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -338,19 +360,16 @@ export async function getPasskeyValidator<
     })
 
     const loginVerifyResult = await loginVerifyResponse.json()
-
-    console.log("loginVerifyResult", loginVerifyResult)
-
     if (!loginVerifyResult.verification.verified) {
         throw new Error("Login not verified")
     }
 
+    // Import the key
     const pubKey = loginVerifyResult.pubkey // Uint8Array pubkey
     if (!pubKey) {
         throw new Error("No public key returned from login verify credential")
     }
 
-    // Import the key
     const spkiDer = Buffer.from(pubKey, "base64")
     const key = await crypto.subtle.importKey(
         "spki",
@@ -371,8 +390,8 @@ export async function getPasskeyValidator<
     const pubKeyX = rawKeyBuffer.subarray(1, 33).toString("hex")
     const pubKeyY = rawKeyBuffer.subarray(33).toString("hex")
 
-    console.log("pubKeyX", pubKeyX)
-    console.log("pubKeyY", pubKeyY)
+    // Fetch chain id
+    const chainId = await getChainId(client)
 
     // build account with passkey
     const account: LocalAccount = toAccount({
@@ -441,8 +460,7 @@ export async function getPasskeyValidator<
             const clientDataJSON = atob(cred.response.clientDataJSON)
 
             // get challenge and response type location
-            const { beforeType, beforeChallenge } =
-                findQuoteIndices(clientDataJSON)
+            const { beforeType } = findQuoteIndices(clientDataJSON)
 
             // get signature r,s
             const signature = verifyResult.signature
@@ -454,18 +472,18 @@ export async function getPasskeyValidator<
                 [
                     { name: "authenticatorData", type: "bytes" },
                     { name: "clientDataJSON", type: "string" },
-                    { name: "challengeLocation", type: "uint256" },
                     { name: "responseTypeLocation", type: "uint256" },
                     { name: "r", type: "uint256" },
-                    { name: "s", type: "uint256" }
+                    { name: "s", type: "uint256" },
+                    { name: "usePrecompiled", type: "bool" }
                 ],
                 [
                     authenticatorDataHex,
                     clientDataJSON,
-                    beforeChallenge,
                     beforeType,
                     BigInt(r),
-                    BigInt(s)
+                    BigInt(s),
+                    isRIP7212SupportedNetwork(chainId)
                 ]
             )
             return encodedSignature
@@ -479,19 +497,24 @@ export async function getPasskeyValidator<
                 | keyof TTypedData
                 | "EIP712Domain" = keyof TTypedData
         >(typedData: TypedDataDefinition<TTypedData, TPrimaryType>) {
-            // TODO: implement
-            return signTypedData<TTypedData, TPrimaryType, TChain, undefined>(
-                client,
-                {
-                    account,
-                    ...typedData
-                }
-            )
+            const { domain, message, primaryType } =
+                typedData as unknown as SignTypedDataParameters
+
+            const types = {
+                EIP712Domain: getTypesForEIP712Domain({ domain }),
+                ...typedData.types
+            }
+
+            validateTypedData({ domain, message, primaryType, types })
+
+            const hash = hashTypedData(typedData)
+            const signature = await signMessage(client, {
+                account,
+                message: hash
+            })
+            return signature
         }
     })
-
-    // Fetch chain id
-    const chainId = await getChainId(client)
 
     return {
         ...account,
@@ -542,24 +565,28 @@ export async function getPasskeyValidator<
                 [
                     { name: "authenticatorData", type: "bytes" },
                     { name: "clientDataJSON", type: "string" },
-                    { name: "challengeLocation", type: "uint256" },
                     { name: "responseTypeLocation", type: "uint256" },
                     { name: "r", type: "uint256" },
-                    { name: "s", type: "uint256" }
+                    { name: "s", type: "uint256" },
+                    { name: "usePrecompiled", type: "bool" }
                 ],
                 [
                     "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
                     '{"type":"webauthn.get","challenge":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","origin":"https://example.com"}',
                     maxUint256,
-                    maxUint256,
                     11111111111111111111111111111111111111111111111111111111111111111111111111111n,
-                    22222222222222222222222222222222222222222222222222222222222222222222222222222n
+                    22222222222222222222222222222222222222222222222222222222222222222222222222222n,
+                    false
                 ]
             )
             return encodedSignature
         },
-        async getValidatorMode() {
-            return ValidatorMode.sudo
+
+        async isEnabled(
+            _kernelAccountAddress: Address,
+            _selector: Hex
+        ): Promise<boolean> {
+            return false
         }
     }
 }
