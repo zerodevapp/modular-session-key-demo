@@ -3,12 +3,12 @@ import {
     KernelSmartAccount,
     createKernelAccount,
     createKernelAccountClient,
-    createZeroDevPaymasterClient
+    createZeroDevPaymasterClient,
 } from "@zerodev/sdk"
 import { BundlerClient, createBundlerClient } from "permissionless"
 import {
     type SmartAccount,
-    signerToSimpleSmartAccount
+    signerToSimpleSmartAccount,
 } from "permissionless/accounts"
 import { SponsorUserOperationMiddleware } from "permissionless/actions/smartAccount"
 import {
@@ -23,14 +23,30 @@ import {
     createPublicClient,
     createWalletClient,
     decodeEventLog,
-    encodeFunctionData
+    encodeFunctionData,
+    zeroAddress,
 } from "viem"
-import { type Account, privateKeyToAccount } from "viem/accounts"
+import {
+    type Account,
+    privateKeyToAccount,
+    generatePrivateKey,
+} from "viem/accounts"
 import { type Chain, goerli } from "viem/chains"
 import * as allChains from "viem/chains"
 import { EntryPointAbi } from "./abis/EntryPoint.js"
 import { createPasskeyValidator } from "./plugin/index.js"
 import { getPasskeyValidator } from "./plugin/toWebAuthnValidator.js"
+import { createPermissionValidator } from "@zerodev/modular-permission"
+import {
+    toWebAuthnSigner,
+    toECDSASigner,
+    WebAuthnMode,
+} from "@zerodev/modular-permission/signers"
+import {
+    toMerklePolicy,
+    toSignaturePolicy,
+    toSudoPolicy,
+} from "@zerodev/modular-permission/policies"
 
 export const Test_ERC20Address = "0x3870419Ba2BBf0127060bCB37f69A1b1C090992B"
 export const getFactoryAddress = (): Address => {
@@ -72,7 +88,7 @@ export const getSignerToSimpleSmartAccount =
         return signerToSimpleSmartAccount(publicClient, {
             entryPoint: getEntryPoint(),
             factoryAddress: getFactoryAddress(),
-            signer: { ...signer, source: "local" as "local" | "external" }
+            signer: { ...signer, source: "local" as "local" | "external" },
         })
     }
 
@@ -105,7 +121,7 @@ const getPaymasterRpc = (): string => {
 
 export const getKernelAccountClient = async ({
     account,
-    sponsorUserOperation
+    sponsorUserOperation,
 }: SponsorUserOperationMiddleware & {
     account?: SmartAccount
 } = {}) => {
@@ -116,7 +132,7 @@ export const getKernelAccountClient = async ({
         account: resolvedAccount,
         chain,
         transport: http(getBundlerRpc()),
-        sponsorUserOperation
+        sponsorUserOperation,
     }) as KernelAccountClient<Transport, Chain, KernelSmartAccount>
 }
 
@@ -129,7 +145,7 @@ export const getEoaWalletClient = (): WalletClient => {
     return createWalletClient({
         account: getPrivateKeyAccount(),
         chain: getTestingChain(),
-        transport: http(rpcUrl)
+        transport: http(rpcUrl),
     })
 }
 
@@ -147,14 +163,71 @@ export const registerWebAuthnKernelAccount = async (
         registerVerifyUrl,
         signInitiateUrl,
         signVerifyUrl,
-        entryPoint: getEntryPoint()
+        entryPoint: getEntryPoint(),
     })
 
     return createKernelAccount(publicClient, {
         entryPoint: getEntryPoint(),
         plugins: {
-            validator: webAuthnValidatorPlugin
+            regular: webAuthnValidatorPlugin,
+        },
+    })
+}
+
+export const createWebAuthnModularKernelAccount = async (
+    passkeyName: string,
+    mode: WebAuthnMode,
+    passkeyServerUrl: string
+): Promise<SmartAccount> => {
+    const publicClient = await getPublicClient()
+
+    const webAuthnModularSigner = await toWebAuthnSigner(publicClient, {
+        passkeyName,
+        passkeyServerUrl,
+        mode,
+    })
+    const modularPermissionPlugin = await createPermissionValidator(
+        publicClient,
+        {
+            signer: webAuthnModularSigner,
+            policies: [await toSudoPolicy({})],
         }
+    )
+
+    const sessionPrivateKey =
+        /* "0x1e800c764bf77350da2722a36137587dd3828457770e35f948b3b737ee09008c" ?? */
+        generatePrivateKey()
+    const sessionKey = privateKeyToAccount(sessionPrivateKey)
+    const ecdsaModularSigner = toECDSASigner({ signer: sessionKey })
+
+    const sessionModularPermissionPlugin = await createPermissionValidator(
+        publicClient,
+        {
+            signer: ecdsaModularSigner,
+            policies: [
+                await toMerklePolicy({
+                    permissions: [
+                        {
+                            target: zeroAddress,
+                        },
+                    ],
+                }),
+                await toSignaturePolicy({
+                    allowedRequestors: [
+                        "0x67e0a05806A54f6C2162a91810BD50eFe28e0460",
+                    ],
+                }),
+            ],
+        }
+    )
+
+    return createKernelAccount(publicClient, {
+        entryPoint: getEntryPoint(),
+        accountLogicAddress: "0x5FC0236D6c88a65beD32EECDC5D60a5CAb377717",
+        plugins: {
+            sudo: modularPermissionPlugin,
+            regular: sessionModularPermissionPlugin,
+        },
     })
 }
 
@@ -170,14 +243,14 @@ export const loginToWebAuthnKernelAccount = async (
         loginVerifyUrl,
         signInitiateUrl,
         signVerifyUrl,
-        entryPoint: getEntryPoint()
+        entryPoint: getEntryPoint(),
     })
 
     return createKernelAccount(publicClient, {
         entryPoint: getEntryPoint(),
         plugins: {
-            validator: webAuthnValidatorPlugin
-        }
+            regular: webAuthnValidatorPlugin,
+        },
     })
 }
 
@@ -196,7 +269,7 @@ export const getPublicClient = async (): Promise<PublicClient> => {
     }
 
     const publicClient = createPublicClient({
-        transport: http(rpcUrl)
+        transport: http(rpcUrl),
     })
 
     const chainId = await publicClient.getChainId()
@@ -216,7 +289,7 @@ export const getKernelBundlerClient = (): BundlerClient => {
 
     return createBundlerClient({
         chain,
-        transport: http(getBundlerRpc())
+        transport: http(getBundlerRpc()),
     })
 }
 
@@ -232,7 +305,7 @@ export const getZeroDevPaymasterClient = () => {
 
     return createZeroDevPaymasterClient({
         chain: chain,
-        transport: http(getPaymasterRpc())
+        transport: http(getPaymasterRpc()),
     })
 }
 
@@ -253,7 +326,7 @@ export const getZeroDevERC20PaymasterClient = () => {
             `${import.meta.env.VITE_ZERODEV_PAYMASTER_RPC_HOST}/${
                 import.meta.env.VITE_ZERODEV_PROJECT_ID
             }?paymasterProvider=STACKUP`
-        )
+        ),
     })
 }
 
@@ -262,7 +335,7 @@ export const isAccountDeployed = async (
 ): Promise<boolean> => {
     const publicClient = await getPublicClient()
     const contractCode = await publicClient.getBytecode({
-        address: accountAddress
+        address: accountAddress,
     })
     return (contractCode?.length ?? 0) > 2
 }
@@ -291,19 +364,19 @@ export const generateApproveCallData = (paymasterAddress: Address): Hex => {
         {
             inputs: [
                 { name: "_spender", type: "address" },
-                { name: "_value", type: "uint256" }
+                { name: "_value", type: "uint256" },
             ],
             name: "approve",
             outputs: [{ name: "", type: "bool" }],
             stateMutability: "nonpayable",
-            type: "function"
-        }
+            type: "function",
+        },
     ]
 
     return encodeFunctionData({
         abi: approveAbi,
         functionName: "approve",
-        args: [paymasterAddress, maxUint256]
+        args: [paymasterAddress, maxUint256],
     })
 }
 
@@ -312,7 +385,7 @@ export const findUserOperationEvent = (logs: Log[]): boolean => {
         try {
             const event = decodeEventLog({
                 abi: EntryPointAbi,
-                ...log
+                ...log,
             })
             return event.eventName === "UserOperationEvent"
         } catch {
