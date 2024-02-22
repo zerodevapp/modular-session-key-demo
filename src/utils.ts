@@ -223,7 +223,6 @@ export const createWebAuthnModularKernelAccount = async (
 
     return createKernelAccount(publicClient, {
         entryPoint: getEntryPoint(),
-        accountLogicAddress: "0x5FC0236D6c88a65beD32EECDC5D60a5CAb377717",
         plugins: {
             sudo: modularPermissionPlugin,
             regular: sessionModularPermissionPlugin,

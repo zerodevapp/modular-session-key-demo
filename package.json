@@ -18,7 +18,7 @@
     "@simplewebauthn/browser": "^8.3.4",
     "@simplewebauthn/server": "^8.3.6",
     "@simplewebauthn/typescript-types": "^8.3.4",
-    "@zerodev/sdk": "^5.1.5",
+    "@zerodev/sdk": "^5.1.6",
     "@zerodev/modular-permission": "^5.1.0-beta.0",
     "@zerodev/session-key": "^5.1.0",
     "buffer": "^6.0.3",
